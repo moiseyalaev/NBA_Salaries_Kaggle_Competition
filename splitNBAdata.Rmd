@@ -1,0 +1,217 @@
+---
+title: "splitNBAdata "
+author: "Moisey Alaev"
+output: pdf_document
+---
+
+========================================================= DATA SET UP ===========================================================
+```{r}
+train <- read.csv("NBATrain.csv")
+test <- read.csv("NBATestNoY.csv")
+dim(train)
+#detach(train)
+dim(test)
+names(train)
+head(train)
+```
+
+SPLIT DATA INTO TRAINING AND TEST
+```{r}
+set.seed(12345)
+smp_size <- floor(0.70 * nrow(train))
+smp_size
+
+train_ind <- sample(seq_len(nrow(train)), size = smp_size)
+train1 <- train[train_ind, ]
+test1 <- train[-train_ind, ]
+```
+
+```{r}
+c <- ggplot(data=train1, aes(Salary))
+c + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+# dim(train)
+# dim(train1)
+# dim(test1)
+
+d <- ggplot(data=test1, aes(Salary))
+d + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+=================================================== CREATING NEW VARIABLES =====================================================
+COUNTRY
+```{r}
+train1$NBA_Country <- ifelse(train1$NBA_Country == "USA", "Native", "Foreign")
+test1$NBA_Country <- ifelse(test1$NBA_Country == "USA", "Native", "Foreign")
+table(train1$NBA_Country)
+```
+
+ALLSTAR
+```{r}
+# train1$Status <- ifelse(train1$Salary >= 10077571, "All-star", ifelse(train1$Salary >= 4017759 , "Starter", "Bench"))
+# table(train1$Status)
+# test1$Status <- ifelse(test1$Salary >= 8557872, "All-star", ifelse(test1$Salary >= 3253242, "Starter", "Bench"))
+
+train1$Status <- ifelse(train1$PTS >= 24 , "All-star", ifelse(train1$PTS >= 19, "Good", "Bad"))
+table(train1$Status)
+
+test1$Status <- ifelse(test1$PTS >= 24, "All-star", ifelse(test1$PTS >= 19, "Good", "Bad"))
+table(test1$Status)
+
+```
+
+AGE
+```{r}
+# max(train1$Age)
+# min(train1$Age)
+#train1$Age
+train1$Age <- ifelse((train1$Age >= 24 & train1$Age <= 28), "Prime", ifelse(train1$Age > 28 , "Old", "Young"))
+table(train1$Age)
+
+test1$Age <- ifelse((test1$Age >= 24 & test1$Age <= 28), "Prime", ifelse(test1$Age > 28 , "Old", "Young"))
+table(test1$Age)
+summary(lm(Salary~Age, data=train))
+```
+
+TM CONVERSION
+```{r}
+# bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA")
+# medMarketTM <- c("NYK", "DAL", "NOP", "GSW", "MIA", "ATL", "MIL", "SAC", "LAL", "BOS")
+# smallMarketTM <- c("CHI","OKC",  "HOU", "IND", "PHX", "PHI", "DEN", "MIN", "BKN",  "UTA")
+# train1$TM <- ifelse(is.element(train1$TM, bigMarketTM), "BigMarket", ifelse(train1$TM %in% medMarketTM, "medMarket", "smallMarket"))
+
+# 
+# bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA", "NYK", "DAL", "NOP", "GSW", "MIA")
+# smallMarketTM <- c("CHI","OKC",  "HOU", "IND", "PHX", "PHI", "DEN", "MIN", "BKN",  "UTA", "ATL", "MIL", "SAC", "LAL", "BOS")
+
+train1$TM <- ifelse(train1$TM %in% bigMarketTM, "BigMarket", "smallMarket")
+
+
+# dummy <- ifelse(train1$TM %in% bigMarketTM, "yo", ifelse(train1$TM %in% medMarketTM, "medMarket", "smallMarket"))
+# 
+# table(as.factor(dummy))
+# 
+# class(train1$TM)
+table(train1$TM)
+summary(lm(Salary~TM, train1))
+```
+
+ROLES <- GAMES STARTED 
+```{r}
+summary(train$GS)
+# GS 
+train1$Role <- ifelse(train1$GS >= 48 , "Starter", ifelse(train$GS > 8 , "SecondUp", "Bench"))
+table(train1$Role)
+
+test1$Role <- ifelse(test1$GS >= 41 , "Starter", "Bench") #ifelse(train$GS > 10 , "SecondUp"
+table(test1$Role)
+```
+
+BPM
+```{r}
+# BPM made into catagories
+train1$BPM <- ifelse(train1$BPM >= 2, "GOAT",ifelse(train1$BPM >= 0, "Good", "Meh"))
+test1$BPM <- ifelse(test1$BPM >= 2, "GOAT",ifelse(test1$BPM >= 0, "Good", "Meh"))
+table(train1$BPM)
+```
+
+TopBracket
+```{r}
+# logestic regression to predict if player in top 25 percent
+TopBracket <-c()
+TopBracket <- ifelse(train1$Salary >= 9532681, TRUE,  FALSE)
+
+logReg <- glm(formula = TopBracket ~ FT + GS + VORP + USG. + FG + G + Age + MP + T.Div + Pos + BPM,
+    family = binomial, data=train1)
+
+probs <- predict(logReg, train1, type="response")
+
+pred <- rep("No",dim(train1)[1])
+pred[probs>.5] <- "Yes"
+train1$TopBracket <- pred
+
+preds <- rep("No",126)
+preds[probs[1:126]>.5] <- "Yes"
+test1$TopBracket <- preds
+```
+
+====================================================== TESTING NEW VARIABLES =====================================================
+
+```{r}
+#summary(lm(Salary ~ train1$PTS, data=train1))
+#summary(lm(Salary ~ Age, data=train1))
+summary(lm(Salary ~ train1$Role, data=train1))
+summary(lm(Salary ~ train1$GS, data=train1))
+```
+
+=================================================== INITAL STEP FUNCTION MODEL =================================================
+
+AIC
+```{r}
+# inital model and full model
+mfull <- lm(Salary~., data=train1)
+m0 <- lm(Salary~1, data=train1)
+
+#Inital model using foward and backward step
+forwardAIC <- step(m0, scope=list(lower=~1, upper=mfull), direction="forward", data=train1)
+backAIC <- step(mfull, direction="backward", data=train1)
+
+forwardBIC <- step(m0, scope=list(lower=~1,upper=mfull),direction="forward", data=train, k = log(length(train1[,1])))
+backBIC <- step(mfull, direction="backward", data=train, k=log(length(train1[,1])))
+```
+
+```{r}
+summary(backAIC)
+summary(forwardAIC)
+summary(backBIC)
+summary(forwardBIC)
+#mBest <- forwardAIC
+vif(backAIC)
+vif(forwardAIC)
+vif(backBIC)
+vif(forwardBIC)
+#anova(forwardAIC, backAIC)
+mBest <- lm(Salary ~ FT + G + Age + MP + BPM + TopBracket, data=train1)
+summary(mBest)
+length(mBest$coefficients)
+```
+============================================================== Testing Vars ====================================================
+
+```{r}
+#summary(lm(Salary ~ train1$GS, data=train1))
+summary(train$GS)
+```
+
+
+```{r}
+forwardAIC <- update(forwardAIC, ~.-NBA_Country)
+```
+
+```{r}
+length(mBest$coefficients)
+```
+
+
+========================================================== Transformations ===================================================
+
+```{r}
+
+```
+
+
+================================================ COMPARE PREDICTED Y TO TEST DATA =============================================
+forwardAIC= 0.4827242, 0.540341
+backAIC = 0.5180431, 0.5327286
+backBIC = 0.4741212, 0.4551961
+forwardBIC = 0.4682725, 0.4700264
+```{r}
+Yhat <- predict(forwardAIC, data=train1, newdata = test1)
+cor(test1$Salary, abs(Yhat), use = "complete.obs")^2
+```
+```{r}
+Predicted.Salary <- abs(predict(mBest, data=train1, newdata = test1))
+cor(test1$Salary, Y.hat, use = "complete.obs")^2
+ggplot(aes(y=Predicted.Salary, x=Salary), data=test1) + geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Relationship between Actual Salary and Predicted Salary") + theme(plot.title = element_text(hjust = 0.5)) +
+  annotate("text", x = (1.8*10^7), y=(2.2*10^7), label = "Correlation Coefficent: 0.527402")
+```
+

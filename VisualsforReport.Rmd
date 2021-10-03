@@ -1,0 +1,196 @@
+---
+title: "VisualsforReport"
+author: "Moisey Alaev"
+date: "6/14/2021"
+---
+
+```{r}
+train <- read.csv("NBATrain.csv")
+test <- read.csv("NBATestNoY.csv")
+attach(train)
+dim(train)
+```
+
+```{r}
+
+# Age made into catagories
+train$Age <- ifelse((Age >= 24 & Age <= 28), "Prime", ifelse(Age > 28 , "Old", "Young"))
+table(Age)
+
+# BPM made into catagories
+train$BPM <- ifelse(BPM >= 2, "GOAT", ifelse(BPM >= 0, "Good", "Meh"))
+table(BPM)
+
+# logestic regression to predict if player in top 25 percent
+TopBracket <-c()
+TopBracket <- ifelse(train$Salary >= 9532681, TRUE,  FALSE)
+
+logReg <- glm(formula = TopBracket ~ FT + GS + VORP + USG. + FG + G + Age + MP + T.Div + Pos+BPM,
+    family = binomial, data=train)
+
+probs <- predict(logReg, train, type="response")
+
+pred <- rep("No",dim(train)[1])
+pred[probs>.5] <- "Yes"
+train$TopBracket <- pred
+```
+
+
+```{r}
+mBest <- lm(formula = Salary ~ FT + G + Age + MP + BPM + TopBracket, data = train)
+```
+
+
+```{r}
+a <- ggplot(data=train, aes(Salary))
+a + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+
+b <- ggplot(data=train, aes(log(Salary)))
+b + geom_histogram() + ggtitle("Distribution of log(Salary)") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+num_pred <- cbind()
+num_pred <- unlist(lapply(train, is.character)) #ifelse(unlist(lapply(train, is.numeric)), num_predictors <- cbind(num_pred, ))
+numerical.vars <- train[ , num_pred]
+numerical.vars
+#adply(cor(Salary, numerical.vars, use = "complete.obs"), 2)
+levels(as.factor(T.Div))
+
+```
+
+```{r}
+corrs <- cor(cbind(PTS,Salary, MP, OWS, DWS, WS, VORP, GS, FT))
+corrplot.mixed(corrs, upper="number", lower="pie")
+```
+
+```{r}
+g <- ggplot(data=train,aes(y=Salary, x=T.Conf))
+g + geom_boxplot() + ggtitle("Conference vs Salary") + theme(plot.title = element_text(hjust = 0.5))
+```
+```{r}
+table(as.factor(NBA_Country))
+```
+
+```{r}
+train$NBA_Country_temp <- ifelse(train$NBA_Country == "USA", "Native", "Foreign")
+#test1$NBA_Country <- ifelse(test1$NBA_Country == "USA", "American", "Foreign")
+
+summary(lm(Salary ~ NBA_Country, data=train))
+summary(lm(Salary ~ NBA_Country_temp, data=train))
+```
+
+```{r}
+bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA", "NYK", "DAL", "NOP", "GSW", "MIA")
+medMarketTM <- c("NYK", "DAL", "NOP", "GSW", "MIA", "ATL", "MIL", "SAC", "LAL", "BOS")
+
+#MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket", ifelse(train$TM %in% medMarketTM, "medMarket", "smallMarket"))
+MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket",  "smallMarket")
+summary(lm(Salary ~ MarketVal1))
+```
+```{r}
+Role <- ifelse(train$GS >= 49 , "Starter", ifelse(train$GS > 11 , "SecondUp", "Bench"))
+summary(lm(train$Salary~Role, data=train))
+```
+
+```{r}
+corr <- cor(cbind(FT, Salary, WS, Age, USG., GS, G, FTA, DBPM, BLK., X2P, STL., DRB, Ortg, DRB, Rk, OWS))
+# corr <- cor(cbind(train$Salary, train$FT, train$GS, train$G, train$MP, train$VORP, train$Ortg, train$USG., train$FG, 
+#                     train$BPM, train$DBPM, train$ODPM))
+corrplot.mixed(corr, upper="number", lower="pie")
+```
+```{r}
+summary(lm(Salary ~ FT + G + Age + MP + BPM + TopBracket, data=train))
+```
+
+```{r}
+library(gridExtra)
+
+diagPlot<-function(model) {
+  p1<-ggplot(model, aes(model$fitted, model$residuals),label=rownames(bonds))+geom_point()
+  p1<-p1+stat_smooth(method="loess")+geom_hline(yintercept=0, col="red", linetype="dashed")
+  p1<-p1+xlab("Fitted values")+ylab("Residuals")
+  p1<-p1+ggtitle("Residual vs Fitted Plot")+theme_bw()
+  p2<-ggplot(model,aes(sample=rstandard(model))) + stat_qq() + stat_qq_line()
+  p2<-p2+xlab("Theoretical Quantiles")+ylab("Standardized Residuals")
+  p2<-p2+ggtitle("Normal Q-Q")
+  p3<-ggplot(model, aes(model$fitted, sqrt(abs(rstandard(model)))))+geom_point(na.rm=TRUE)
+  p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
+  p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
+  p3<-p3+ggtitle("Scale-Location")+theme_bw()+geom_hline(yintercept=sqrt(2),col="red", linetype="dashed")
+  p4<-ggplot(model, aes(seq_along(cooks.distance(model)), cooks.distance(model)))+geom_bar(stat="identity", position="identity")
+  p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
+  p4<-p4+ggtitle("Cook's distance")+theme_bw()+geom_hline(yintercept=4/(length(model$residuals-2)), col="red", linetype="dashed")
+  
+  p5<-ggplot(model, aes(hatvalues(model), rstandard(model)))+geom_point(aes(size=cooks.distance(model)), na.rm=TRUE)
+  p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
+  p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
+  p5<-p5+ggtitle("Residual vs Leverage Plot")
+  p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
+  p5<-p5+theme_bw()+theme(legend.position="bottom")+geom_hline(yintercept=c(-2,2),col="red",linetype="dashed")+geom_vline(xintercept=4/(length(model$residuals)), col="blue", linetype="dashed")+ylim(-4,4)
+  p6<-ggplot(model, aes(hatvalues(model), cooks.distance(model)))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
+  p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
+  p6<-p6+ggtitle("Cook's dist vs Leverage")
+  p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
+  p6<-p6+theme_bw()
+  return(grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3))
+}
+
+```
+
+
+```{r}
+temp <- lm(Salary ~FT + G + Age + MP + BPM + TopBracket, data=train)
+diagPlot(temp)
+```
+
+```{r}
+inverseResponsePlot(mBest)
+```
+```{r}
+ggplot(aes(y=Salary, x=1:420), data=train) + geom_point() +  geom_smooth(method='lm', formula=  Salary ~ FT + G + Age + MP + BPM + TopBracket)
+plot(mBest)
+
+```
+
+```{r}
+#mmps(mBest, vars=~MP)#c(FT, G, MP))
+mmp(mBest,MP,xlab="MP", main= "      MMP of the Minutes Played")
+mmp(mBest,MP,xlab="G", main= "      MMP of the Games Played")
+mmp(mBest,MP,xlab="FT", main= "      MMP of the Free Throws")
+```
+```{r}
+leveragePlots(mBest)
+```
+
+```{r}
+n = 300
+hvals <- hatvalues(mBest)
+rstandard <- rstandard(mBest)
+cutoff <- 2*(7/480)
+
+#qplot(cleveland$patientnum, hvals) + geom_hline(yintercept = 4/n)
+OUT <- ifelse(hvals >= cutoff, "yes", "no")
+LEV <- ifelse(abs(rstandard) >= 2, "yes", "no")
+
+table(LEV, OUT)
+
+
+# Get leverage points and test them
+
+which(hats > cutoff) 
+
+# Get standardized residuals for testing leverage type
+
+which(abs(rStand) > 2) # outliers
+
+
+which((hats > cutoff) & (abs(rStand) > 2)) # bad leverages
+
+which((rStand > cutoff) & (abs(rStand) < 2)) # good leverages
+```
+
+```{r}
+anova(mBest)
+```
+

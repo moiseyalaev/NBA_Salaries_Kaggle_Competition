@@ -1,0 +1,723 @@
+---
+title: "NBAmodel"
+author: "Moisey Aalaev"
+date: "5/14/2021"
+output: pdf_document
+---
+
+NOTE:
+THIS RMD CONTAINS THREE DIFFERENT RMD FILES THAT WERE COPY AND PASTED INTO THIS ONE BECAUSE ONLY ONE
+FILE SUBMISSION WAS ALLOWED ON CCLE.
+
+```{r}
+train <- read.csv("NBATrain.csv")
+test <- read.csv("NBATestNoY.csv")
+#attach(train)
+dim(test)
+names(train)
+head(train)
+```
+
+
+=========================================================== CREATING NEW VARIABLES =====================================================
+Country
+```{r}
+train$NBA_Country <- ifelse(train$NBA_Country == "USA", "Native", "Foreign")
+#test1$NBA_Country <- ifelse(test1$NBA_Country == "USA", "Native", "Foreign")
+table(train1$NBA_Country)
+
+summary(lm(train$Salary ~ train$NBA_Country, data=train))
+```
+
+MarketTeams
+```{r}
+bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA")
+medMarketTM <- c("NYK", "DAL", "NOP", "GSW", "MIA", "ATL", "MIL", "SAC", "LAL", "BOS")
+
+train$MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket", ifelse(train$TM %in% medMarketTM, "medMarket", "smallMarket"))
+#train$MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket",  "smallMarket")
+
+```
+
+Status
+```{r}
+summary(train$Salary)
+
+train$Status <- ifelse(train$PTS >= 24 , "All-star", ifelse(train$PTS >= 19, "Good", "Bad"))
+table(train$Status)
+
+test$Status <- ifelse(test$PTS >= 24, "All-star", ifelse(test$PTS >= 19, "Good", "Bad"))
+table(test$Status)
+```
+
+AGE
+```{r}
+train$Age <- ifelse((train$Age >= 24 & train$Age <= 28), "Prime", ifelse(train$Age > 28 , "Old", "Young"))
+table(train$Age)
+
+test$Age <- ifelse((test$Age >= 24 & test$Age <= 28), "Prime", ifelse(test$Age > 28 , "Old", "Young"))
+
+table(test1$Age)
+```
+
+BPM
+```{r}
+summary(train$BPM)
+train$BPM <- ifelse(train$BPM >= 2, "GOAT",ifelse(train$BPM >= 0, "Good", "Meh"))
+
+
+test$BPM <- ifelse(test$BPM >= 2, "GOAT",ifelse(test$BPM >= 0, "Good", "Meh"))
+
+summary(lm(Salary~train$BPM, data=train))
+table(train$BPM)
+```
+
+```{r}
+summary(train$MP)
+dummy <- ifelse(train$MP >= 1783.0, "Lots",ifelse(train$MP >= 1089.5, "Average", "Low"))
+# 
+# 
+# test$BPM <- ifelse(test$BPM >= 2, "GOAT",ifelse(test$BPM >= 0, "Good", "Meh"))
+
+summary(lm(Salary~dummy, data=train))
+# table(train$MP)
+```
+
+```{r}
+train$dummy <- ifelse(train$TM == "DAL", "DAL",ifelse(train$TM == "LAC", "LAC", "other"))
+summary(lm(Salary~dummy, data=train))
+```
+
+```{r}
+summary(lm(Salary~Status, data=train))
+```
+
+=================================================== INITAL STEP FUNCTION MODEL =================================================
+
+```{r}
+m00 <- lm(Salary~1,data=train)
+mfull <- lm(Salary~.+TopBracket, data=train)
+
+forwardAIC <- step(m00, scope=list(lower=~1,upper=mfull),
+                    direction="forward", data=train)
+backAIC <- step(mfull, direction="backward", data=train)
+
+forwardBIC <- step(mBest2, scope=list(lower=~1,upper=mfull),
+                   direction="forward", data=train, k = log(length(train[,1])))
+
+backBIC <- step(mfull, direction="backward", data=train, k=log(length(train[,1])))
+```
+
+```{r}
+summary(backAIC)
+summary(forwardAIC)
+summary(backBIC)
+summary(forwardBIC)
+```
+    
+```{r}
+#TopBracket<- c(TopBracket, TRUE)
+TopBracket <-c()
+TopBracket <- ifelse(train$Salary >= 9532681, TRUE,  FALSE)
+
+logReg <- glm(formula = TopBracket ~ FT + GS + VORP + USG. + FG + G + Age + MP + T.Div + Pos+BPM,
+    family = binomial, data=train)
+
+
+# test$TopBracket <- ifelse(predict(logReg, data=test) >= 0, TRUE, FALSE)
+
+#Y.hat <- predict(mBest, data=train, newdata = test)
+
+probs <- predict(logReg, train, type="response")
+
+pred <- rep("No",dim(train)[1])
+pred[probs>.5] <- "Yes"
+train$TopBracket <- pred
+probs <- predict(logReg, test, type="response")
+
+pred <- rep("No",dim(test)[1])
+pred[probs>.5] <- "Yes"
+test$TopBracket <- pred
+summary(lm(Salary ~train$TopBracket, data=train))
+```
+    
+```{r}
+mBest <- forwardAIC
+mBest<-update(mBest, ~.-NBA_Country)
+mBest<-update(mBest, ~.-TM)
+mBest<-update(mBest, ~.+MarketVal)
+summary(mBest)
+vif(mBest)
+```
+.6142, 0.6271 0.6215 
+```{r}
+summary(backAIC)
+summary(forwardAIC)
+summary(lm(train$Salary ~ Status, data=train))
+```
+
+```{r}
+backAIC <- step(mBest, direction="backward", data=train) #FT + G + Age + MP + BPM + TopBracket
+summary(backAIC)
+mBest2 <- backAIC
+
+backBIC <- step(mBest, direction="backward", data=train, k=log(length(train[,1]))) #FT + VORP + G + Age + MP + TopBracket
+summary(backBIC)
+```
+
+
+```{r}
+mBest<-update(mBest, ~.-NBA_Country)
+mBest <- update(mBest, ~.-Ob)
+mBest <- update(mBest, ~.G)
+mBest <- update(mBest, ~.-BLK)
+mBest <- update(mBest, ~.+Pos)
+mBest <- update(mBest, ~.+BPM)
+mBest <- update(mBest, ~.-DBPM)
+mBest <- update(mBest2, ~+T.Div)
+# -G, Blk, blk.,stl., ob, ws
+summary(mBest2)
+```
+OG-----0.6409,	Adjusted R-squared:  0.6142, 390 DF
+no Ob--0.6406,	Adjusted R-squared:  0.6149
+no G-- 0.6079,	Adjusted R-squared:  0.5809
+no blk--0.6073,	Adjusted R-squared:  0.5814
+no blk.--- 0.6005,	Adjusted R-squared:  0.5752
+
+no WS ---0.5994,	Adjusted R-squared:  0.5751
+with G -- 0.634,	Adjusted R-squared:  0.6108 
+noFG--0.6328,	Adjusted R-squared:  0.6105
+no X2P.--0.6311,	Adjusted R-squared:  0.6097
+no DBPM --0.6255,	Adjusted R-squared:  0.6048
+no Ortg -- 0.6252,	Adjusted R-squared:  0.6054
+yes DBPM,ODPM----0.6348,	Adjusted R-squared:  0.6126
+no DBPM --- 0.6332,	Adjusted R-squared:  0.611
+no ODPM--- 0.6334,	Adjusted R-squared:  0.6121
+no stl. --0.6161,	Adjusted R-squared:  0.5999
+T.div --0.6324,	Adjusted R-squared:  0.612
+
+TRIMMING DOWN USING CORR
+```{r}
+corr <- cor(cbind(train$Salary, train$FT, train$GS, train$G, train$MP, train$VORP, train$Ortg, train$USG., train$FG, 
+                    train$BPM, train$DBPM, train$ODPM))
+corrplot.mixed(corr, lower="number", upper="pie")
+cor(train$Salary, train$AGE, use = "complete.obs")
+
+
+```
+
+================================================================== SUBMISSION ===========================================================
+
+```{r}
+Y.hat <- predict(mBest2, data=train, newdata = test)
+Y.hat <- abs(Y.hat)
+sub <- data.frame(1:180, Y.hat)
+sub
+colnames(sub)[1] <- "Ob"
+colnames(sub)[2] <- "Salary"
+ 
+
+write.csv(sub, file="sub8.csv")
+
+#rebounds, fouls, and assists 
+```
+
+Sub4 : 
+Multiple R-squared:  0.6977,	Adjusted R-squared:  0.653, 365 DF
+Multiple R-squared:  0.6309,	Adjusted R-squared:  0.6104 397 DF
+
+
+mBest: Salary ~ FT + GS + Pos + VORP + T.Div + USG. + FG + 
+    STL. + G + Age + MP + BPM
+
+============================================================= OG MODELS ============================================================
+
+```{r}
+#WS + FT + GS + G + TM + MP + Pos + AST + VORP
+m0 <- lm(Salary~ TM + AST + FG + Pos + MP + Rk+ G + GS + Ortg + WS + VORP + FT*PTS, data=train)
+summary(m0) 
+vif(m0)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(m0)
+```
+
+```{r}
+pairs(Salary~ AST + FG + MP + Rk+ G + GS + Ortg + WS + VORP + FT*PTS)
+
+corr <- cor(cbind(Salary, AST, FG, MP, Rk, G, GS,  Ortg, WS, VORP, FT*PTS))
+corr
+corrplot.mixed(corr, lower="number", upper="pie")
+head()
+```
+
+
+```{r}
+m00 <- lm(Salary~1,data=train)
+
+forwardAIC <- step(m00, scope=list(lower=~1,
+upper=~ TM + AST + FG + Pos + MP + Rk+ G + GS + Ortg + WS + VORP + FT*PTS),
+direction="forward", data=train)
+```
+
+```{r}
+
+
+ if(min(FG) <= 0)
+   FG = FG+10^-6
+
+ min(FG)
+
+summary(powerTransform(cbind(FG)~1))
+
+
+#TM + AST + FG + Pos + MP + Rk + G + GS + VORP + FT + PTS + FT*PTS
+
+# Salary=1.3, AST=.42, FG=.7, MP=.5, G=1, GS=.14, FT=.42, VORP=-.5,
+# FT=.42, PTS=.68, FT*PTS=.28
+
+summary(mBest)
+
+mTrans <- lm(Salary ~ TM + sqrt(AST) + FG + Pos + sqrt(MP) + G + log(GS) + FT + VORP + FT + sqrt(PTS))
+summary(mTrans)
+
+mBest <- mTrans
+```
+#if we do log of y , we do inverse of log (exp) on the predicted y that we submit!
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(mBest)
+```
+
+
+
+
+============================================================================= SECOND .RMD FILE BELOW ===============================================================
+---
+title: "splitNBAdata "
+author: "Moisey Alaev"
+output: pdf_document
+---
+
+NOTE:
+CONTAINS CODE FOR WORKING WITH SPLIT TRAINING DATA INTO NEW LOCAL
+TRAINING SET AND TESTING SET
+
+========================================================= DATA SET UP ===========================================================
+```{r}
+train <- read.csv("NBATrain.csv")
+test <- read.csv("NBATestNoY.csv")
+dim(train)
+#detach(train)
+dim(test)
+names(train)
+head(train)
+```
+
+SPLIT DATA INTO TRAINING AND TEST
+```{r}
+set.seed(12345)
+smp_size <- floor(0.70 * nrow(train))
+smp_size
+
+train_ind <- sample(seq_len(nrow(train)), size = smp_size)
+train1 <- train[train_ind, ]
+test1 <- train[-train_ind, ]
+```
+
+```{r}
+c <- ggplot(data=train1, aes(Salary))
+c + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+# dim(train)
+# dim(train1)
+# dim(test1)
+
+d <- ggplot(data=test1, aes(Salary))
+d + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+=================================================== CREATING NEW VARIABLES =====================================================
+COUNTRY
+```{r}
+train1$NBA_Country <- ifelse(train1$NBA_Country == "USA", "Native", "Foreign")
+test1$NBA_Country <- ifelse(test1$NBA_Country == "USA", "Native", "Foreign")
+table(train1$NBA_Country)
+```
+
+ALLSTAR
+```{r}
+# train1$Status <- ifelse(train1$Salary >= 10077571, "All-star", ifelse(train1$Salary >= 4017759 , "Starter", "Bench"))
+# table(train1$Status)
+# test1$Status <- ifelse(test1$Salary >= 8557872, "All-star", ifelse(test1$Salary >= 3253242, "Starter", "Bench"))
+
+train1$Status <- ifelse(train1$PTS >= 24 , "All-star", ifelse(train1$PTS >= 19, "Good", "Bad"))
+table(train1$Status)
+
+test1$Status <- ifelse(test1$PTS >= 24, "All-star", ifelse(test1$PTS >= 19, "Good", "Bad"))
+table(test1$Status)
+
+```
+
+AGE
+```{r}
+# max(train1$Age)
+# min(train1$Age)
+#train1$Age
+train1$Age <- ifelse((train1$Age >= 24 & train1$Age <= 28), "Prime", ifelse(train1$Age > 28 , "Old", "Young"))
+table(train1$Age)
+
+test1$Age <- ifelse((test1$Age >= 24 & test1$Age <= 28), "Prime", ifelse(test1$Age > 28 , "Old", "Young"))
+table(test1$Age)
+summary(lm(Salary~Age, data=train))
+```
+
+TM CONVERSION
+```{r}
+# bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA")
+# medMarketTM <- c("NYK", "DAL", "NOP", "GSW", "MIA", "ATL", "MIL", "SAC", "LAL", "BOS")
+# smallMarketTM <- c("CHI","OKC",  "HOU", "IND", "PHX", "PHI", "DEN", "MIN", "BKN",  "UTA")
+# train1$TM <- ifelse(is.element(train1$TM, bigMarketTM), "BigMarket", ifelse(train1$TM %in% medMarketTM, "medMarket", "smallMarket"))
+
+# 
+# bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA", "NYK", "DAL", "NOP", "GSW", "MIA")
+# smallMarketTM <- c("CHI","OKC",  "HOU", "IND", "PHX", "PHI", "DEN", "MIN", "BKN",  "UTA", "ATL", "MIL", "SAC", "LAL", "BOS")
+
+train1$TM <- ifelse(train1$TM %in% bigMarketTM, "BigMarket", "smallMarket")
+
+
+# dummy <- ifelse(train1$TM %in% bigMarketTM, "yo", ifelse(train1$TM %in% medMarketTM, "medMarket", "smallMarket"))
+# 
+# table(as.factor(dummy))
+# 
+# class(train1$TM)
+table(train1$TM)
+summary(lm(Salary~TM, train1))
+```
+
+ROLES <- GAMES STARTED 
+```{r}
+summary(train$GS)
+# GS 
+train1$Role <- ifelse(train1$GS >= 48 , "Starter", ifelse(train$GS > 8 , "SecondUp", "Bench"))
+table(train1$Role)
+
+test1$Role <- ifelse(test1$GS >= 41 , "Starter", "Bench") #ifelse(train$GS > 10 , "SecondUp"
+table(test1$Role)
+```
+
+BPM
+```{r}
+# BPM made into catagories
+train1$BPM <- ifelse(train1$BPM >= 2, "GOAT",ifelse(train1$BPM >= 0, "Good", "Meh"))
+test1$BPM <- ifelse(test1$BPM >= 2, "GOAT",ifelse(test1$BPM >= 0, "Good", "Meh"))
+table(train1$BPM)
+```
+
+TopBracket
+```{r}
+# logestic regression to predict if player in top 25 percent
+TopBracket <-c()
+TopBracket <- ifelse(train1$Salary >= 9532681, TRUE,  FALSE)
+
+logReg <- glm(formula = TopBracket ~ FT + GS + VORP + USG. + FG + G + Age + MP + T.Div + Pos + BPM,
+    family = binomial, data=train1)
+
+probs <- predict(logReg, train1, type="response")
+
+pred <- rep("No",dim(train1)[1])
+pred[probs>.5] <- "Yes"
+train1$TopBracket <- pred
+
+preds <- rep("No",126)
+preds[probs[1:126]>.5] <- "Yes"
+test1$TopBracket <- preds
+```
+
+====================================================== TESTING NEW VARIABLES =====================================================
+
+```{r}
+#summary(lm(Salary ~ train1$PTS, data=train1))
+#summary(lm(Salary ~ Age, data=train1))
+summary(lm(Salary ~ train1$Role, data=train1))
+summary(lm(Salary ~ train1$GS, data=train1))
+```
+
+=================================================== INITAL STEP FUNCTION MODEL =================================================
+
+AIC
+```{r}
+# inital model and full model
+mfull <- lm(Salary~., data=train1)
+m0 <- lm(Salary~1, data=train1)
+
+#Inital model using foward and backward step
+forwardAIC <- step(m0, scope=list(lower=~1, upper=mfull), direction="forward", data=train1)
+backAIC <- step(mfull, direction="backward", data=train1)
+
+forwardBIC <- step(m0, scope=list(lower=~1,upper=mfull),direction="forward", data=train, k = log(length(train1[,1])))
+backBIC <- step(mfull, direction="backward", data=train, k=log(length(train1[,1])))
+```
+
+```{r}
+summary(backAIC)
+summary(forwardAIC)
+summary(backBIC)
+summary(forwardBIC)
+#mBest <- forwardAIC
+vif(backAIC)
+vif(forwardAIC)
+vif(backBIC)
+vif(forwardBIC)
+#anova(forwardAIC, backAIC)
+mBest <- lm(Salary ~ FT + G + Age + MP + BPM + TopBracket, data=train1)
+summary(mBest)
+length(mBest$coefficients)
+```
+============================================================== Testing Vars ====================================================
+
+```{r}
+#summary(lm(Salary ~ train1$GS, data=train1))
+summary(train$GS)
+```
+
+
+```{r}
+forwardAIC <- update(forwardAIC, ~.-NBA_Country)
+```
+
+```{r}
+length(mBest$coefficients)
+```
+
+
+========================================================== Transformations ===================================================
+
+```{r}
+
+```
+
+
+================================================ COMPARE PREDICTED Y TO TEST DATA =============================================
+forwardAIC= 0.4827242, 0.540341
+backAIC = 0.5180431, 0.5327286
+backBIC = 0.4741212, 0.4551961
+forwardBIC = 0.4682725, 0.4700264
+```{r}
+Yhat <- predict(forwardAIC, data=train1, newdata = test1)
+cor(test1$Salary, abs(Yhat), use = "complete.obs")^2
+```
+```{r}
+Predicted.Salary <- abs(predict(mBest, data=train1, newdata = test1))
+cor(test1$Salary, Y.hat, use = "complete.obs")^2
+ggplot(aes(y=Predicted.Salary, x=Salary), data=test1) + geom_point() + geom_smooth(method = "lm") +
+  ggtitle("Relationship between Actual Salary and Predicted Salary") + theme(plot.title = element_text(hjust = 0.5)) +
+  annotate("text", x = (1.8*10^7), y=(2.2*10^7), label = "Correlation Coefficent: 0.527402")
+```
+
+
+
+
+============================================================================ THIRD .RMD FILE BELOW ==================================================================
+---
+title: "VisualsforReport"
+author: "Moisey Alaev"
+date: "6/14/2021"
+---
+
+NOTE;
+CONTAINS CODE USED FOR VISUALS FOR THE FINAL REPORT
+
+```{r}
+train <- read.csv("NBATrain.csv")
+test <- read.csv("NBATestNoY.csv")
+attach(train)
+dim(train)
+```
+
+```{r}
+
+# Age made into catagories
+train$Age <- ifelse((Age >= 24 & Age <= 28), "Prime", ifelse(Age > 28 , "Old", "Young"))
+table(Age)
+
+# BPM made into catagories
+train$BPM <- ifelse(BPM >= 2, "GOAT",ifelse(BPM >= 0, "Good", "Meh"))
+table(BPM)
+
+# logestic regression to predict if player in top 25 percent
+TopBracket <-c()
+TopBracket <- ifelse(train$Salary >= 9532681, TRUE,  FALSE)
+
+logReg <- glm(formula = TopBracket ~ FT + GS + VORP + USG. + FG + G + Age + MP + T.Div + Pos+BPM,
+    family = binomial, data=train)
+
+probs <- predict(logReg, train, type="response")
+
+pred <- rep("No",dim(train)[1])
+pred[probs>.5] <- "Yes"
+train$TopBracket <- pred
+```
+
+
+```{r}
+mBest <- lm(formula = Salary ~ FT + G + Age + MP + BPM + TopBracket, data = train)
+```
+
+
+```{r}
+a <- ggplot(data=train, aes(Salary))
+a + geom_histogram() + ggtitle("Distribution of Salary") + theme(plot.title = element_text(hjust = 0.5))
+
+b <- ggplot(data=train, aes(log(Salary)))
+b + geom_histogram() + ggtitle("Distribution of log(Salary)") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+num_pred <- cbind()
+num_pred <- unlist(lapply(train, is.character)) #ifelse(unlist(lapply(train, is.numeric)), num_predictors <- cbind(num_pred, ))
+numerical.vars <- train[ , num_pred]
+numerical.vars
+#adply(cor(Salary, numerical.vars, use = "complete.obs"), 2)
+levels(as.factor(T.Div))
+
+```
+
+```{r}
+corrs <- cor(cbind(PTS,Salary, MP, OWS, DWS, WS, VORP, GS, FT))
+corrplot.mixed(corrs, upper="number", lower="pie")
+```
+
+```{r}
+g <- ggplot(data=train,aes(y=Salary, x=T.Conf))
+g + geom_boxplot() + ggtitle("Conference vs Salary") + theme(plot.title = element_text(hjust = 0.5))
+```
+```{r}
+table(as.factor(NBA_Country))
+```
+
+```{r}
+train$NBA_Country_temp <- ifelse(train$NBA_Country == "USA", "Native", "Foreign")
+#test1$NBA_Country <- ifelse(test1$NBA_Country == "USA", "American", "Foreign")
+
+summary(lm(Salary ~ NBA_Country, data=train))
+summary(lm(Salary ~ NBA_Country_temp, data=train))
+```
+
+```{r}
+bigMarketTM <- c("CLE", "POR", "LAC", "SAS", "MEM", "TOR", "DET", "ORL", "WAS", "CHA", "NYK", "DAL", "NOP", "GSW", "MIA")
+medMarketTM <- c("NYK", "DAL", "NOP", "GSW", "MIA", "ATL", "MIL", "SAC", "LAL", "BOS")
+
+#MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket", ifelse(train$TM %in% medMarketTM, "medMarket", "smallMarket"))
+MarketVal1 <- ifelse(train$TM %in% bigMarketTM, "BigMarket",  "smallMarket")
+summary(lm(Salary ~ MarketVal1))
+```
+```{r}
+Role <- ifelse(train$GS >= 49 , "Starter", ifelse(train$GS > 11 , "SecondUp", "Bench"))
+summary(lm(train$Salary~Role, data=train))
+```
+
+```{r}
+corr <- cor(cbind(FT, Salary, WS, Age, USG., GS, G, FTA, DBPM, BLK., X2P, STL., DRB, Ortg, DRB, Rk, OWS))
+# corr <- cor(cbind(train$Salary, train$FT, train$GS, train$G, train$MP, train$VORP, train$Ortg, train$USG., train$FG, 
+#                     train$BPM, train$DBPM, train$ODPM))
+corrplot.mixed(corr, upper="number", lower="pie")
+```
+```{r}
+summary(lm(Salary ~ FT + G + Age + MP + BPM + TopBracket, data=train))
+```
+
+```{r}
+library(gridExtra)
+
+diagPlot<-function(model) {
+  p1<-ggplot(model, aes(model$fitted, model$residuals),label=rownames(bonds))+geom_point()
+  p1<-p1+stat_smooth(method="loess")+geom_hline(yintercept=0, col="red", linetype="dashed")
+  p1<-p1+xlab("Fitted values")+ylab("Residuals")
+  p1<-p1+ggtitle("Residual vs Fitted Plot")+theme_bw()
+  p2<-ggplot(model,aes(sample=rstandard(model))) + stat_qq() + stat_qq_line()
+  p2<-p2+xlab("Theoretical Quantiles")+ylab("Standardized Residuals")
+  p2<-p2+ggtitle("Normal Q-Q")
+  p3<-ggplot(model, aes(model$fitted, sqrt(abs(rstandard(model)))))+geom_point(na.rm=TRUE)
+  p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
+  p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
+  p3<-p3+ggtitle("Scale-Location")+theme_bw()+geom_hline(yintercept=sqrt(2),col="red", linetype="dashed")
+  p4<-ggplot(model, aes(seq_along(cooks.distance(model)), cooks.distance(model)))+geom_bar(stat="identity", position="identity")
+  p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
+  p4<-p4+ggtitle("Cook's distance")+theme_bw()+geom_hline(yintercept=4/(length(model$residuals-2)), col="red", linetype="dashed")
+  
+  p5<-ggplot(model, aes(hatvalues(model), rstandard(model)))+geom_point(aes(size=cooks.distance(model)), na.rm=TRUE)
+  p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
+  p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
+  p5<-p5+ggtitle("Residual vs Leverage Plot")
+  p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
+  p5<-p5+theme_bw()+theme(legend.position="bottom")+geom_hline(yintercept=c(-2,2),col="red",linetype="dashed")+geom_vline(xintercept=4/(length(model$residuals)), col="blue", linetype="dashed")+ylim(-4,4)
+  p6<-ggplot(model, aes(hatvalues(model), cooks.distance(model)))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
+  p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
+  p6<-p6+ggtitle("Cook's dist vs Leverage")
+  p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
+  p6<-p6+theme_bw()
+  return(grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3))
+}
+
+```
+
+
+```{r}
+temp <- lm(Salary ~FT + G + Age + MP + BPM + TopBracket, data=train)
+diagPlot(temp)
+```
+
+```{r}
+inverseResponsePlot(mBest)
+```
+```{r}
+ggplot(aes(y=Salary, x=1:420), data=train) + geom_point() +  geom_smooth(method='lm', formula=  Salary ~ FT + G + Age + MP + BPM + TopBracket)
+plot(mBest)
+
+```
+
+```{r}
+#mmps(mBest, vars=~MP)#c(FT, G, MP))
+mmp(mBest,MP,xlab="MP", main= "      MMP of the Minutes Played")
+mmp(mBest,MP,xlab="G", main= "      MMP of the Games Played")
+mmp(mBest,MP,xlab="FT", main= "      MMP of the Free Throws")
+```
+```{r}
+leveragePlots(mBest)
+```
+
+```{r}
+n = 300
+hvals <- hatvalues(mBest)
+rstandard <- rstandard(mBest)
+cutoff <- 2*(7/480)
+
+#qplot(cleveland$patientnum, hvals) + geom_hline(yintercept = 4/n)
+OUT <- ifelse(hvals >= cutoff, "yes", "no")
+LEV <- ifelse(abs(rstandard) >= 2, "yes", "no")
+
+table(LEV, OUT)
+
+
+# Get leverage points and test them
+
+which(hats > cutoff) 
+
+# Get standardized residuals for testing leverage type
+
+which(abs(rStand) > 2) # outliers
+
+
+which((hats > cutoff) & (abs(rStand) > 2)) # bad leverages
+
+which((rStand > cutoff) & (abs(rStand) < 2)) # good leverages
+```
+
+```{r}
+anova(mBest)
+```
+
